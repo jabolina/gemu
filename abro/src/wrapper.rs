@@ -19,7 +19,7 @@ use tokio_stream::Stream;
 ///
 /// This structure holds both the etcd client and the bounded partition value. A new structure
 /// can only be create successfully if we are able to connect to the etcd server.
-struct EtcdWrapper {
+pub(crate) struct EtcdWrapper {
     /// The etcd connection, which will be used to write values and to watch for changes that
     /// are applied in our [`EtcdWrapper::partition`].
     client: etcd::Client,
@@ -28,6 +28,7 @@ struct EtcdWrapper {
     /// in the current partition only. This partition must be a complete match over the key in
     /// the etcd KV store, meaning that we are not watching for prefixes, we are watching the
     /// complete key.
+    #[allow(dead_code)]
     partition: String,
 }
 
@@ -37,7 +38,11 @@ impl EtcdWrapper {
     ///
     /// This is used only internally, where the [`abro::transport::Transport`] struct abstract
     /// everything for the user, and let available only a send/receive primitive.
-    async fn write(&mut self, destination: &str, value: impl Into<String>) -> crate::Result<()> {
+    pub(crate) async fn write(
+        &mut self,
+        destination: &str,
+        value: impl Into<String>,
+    ) -> crate::Result<()> {
         match self.client.put(destination, value.into(), None).await {
             Err(e) => Err(crate::Error::SendError(e.to_string())),
             Ok(_) => Ok(()),
@@ -65,7 +70,26 @@ impl EtcdWrapper {
     /// We are not dealing with any reconnection at this point, if our client disconnects from
     /// the etcd server we do not know what will happen.
     ///
-    async fn watch<'a>(&'a mut self) -> impl Stream<Item = crate::Result<String>> + 'a {
+    /// # Disclaimer
+    ///
+    /// In this approach using the last revision since the last compaction can lead to receiving
+    /// duplicated message after restarts. If a peer start listening and processes message `a`, `b`,
+    /// for some reason it crashes and restarts, when it starts to listen again it no compaction
+    /// occurred in the etcd server, the peer will receive messages `a` and `b` again. This is a
+    /// complex exactly-once deliver problem.
+    ///
+    /// We can change this behavior by not using the `start_revision` argument and start to only
+    /// listen to changes when the peer just connects, but then again, this can lead to not
+    /// receiving some of the events that happened while the peer was restarting.
+    ///
+    /// Probably the best approach is to persist the revision value in a persistent storage and
+    /// retrieve the value when the peer start again. This is fun because we can use etcd for this,
+    /// after receiving the event we start a transaction, we process the message and persist the
+    /// revision value into etcd itself using an unique identifier for the current peer and then
+    /// commit the transaction. Although I feel that this could not be enough, for example, the
+    /// Kafka team solution for exactly-once semantics is somewhat complex.
+    #[allow(unused_must_use)]
+    pub(crate) async fn watch<'a>(&'a mut self) -> impl Stream<Item = crate::Result<String>> + 'a {
         try_stream! {
             // We will start watching from the very first revision since the last compaction,
             // so we define the starting revision to `1`. The value `0` indicates the absence
@@ -115,7 +139,7 @@ impl From<etcd::Error> for crate::Error {
 ///
 /// This method can fail if we are unable to connect to the etcd server using the given address.
 ///
-pub async fn connect(address: &str, partition: &str) -> crate::Result<EtcdWrapper> {
+pub(crate) async fn connect(address: &str, partition: &str) -> crate::Result<EtcdWrapper> {
     let client = etcd::Client::connect([address], None).await?;
     Ok(EtcdWrapper {
         client,
