@@ -46,3 +46,23 @@ Here we are being a little conservative and referring only to _correct processes
 not sure if the etcd implementation is uniform or not. If the etcd implement does implement an
 uniform atomic broadcast, this means that we also should be able to offer the same uniform
 guarantees.
+
+## Limitations
+
+Since this is just an experimental library so I can learn how to code in rust, this does have
+some limitations. I was just telling that we guarantee everything from the atomic broadcast,
+but in fact I was lying :(.
+
+The guarantee for the _integrity_ property is difficult, the part of '_at most once_'. Since
+we are backed by the atomic broadcast implementation itself, every event that the underlying
+library produce we should also produce, but in our case, we must produce it _exactly once_.
+If the event was published to us, means that the value was delivered by the protocol and it will
+be delivered _at most once_, and if something was not delivered means the protocol did not
+deliver as well, so no worries.
+
+The problem is that we now have to solve an exactly once problem here, and this is no simple
+task. This could be fun to tackle? I am sure it is, but will I deal with this now? Probably no.
+There are some possible solutions, trying to mimic the behavior of the Kafka implementation,
+using a transaction with etcd, persisting the revision version and loading it when necessary.
+But I will not handle this right now, since I only want to learn Rust and I am not really
+searching for correctness here.
