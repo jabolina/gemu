@@ -65,6 +65,7 @@
 //! But I will not handle this right now, since I only want to learn Rust and I am not really
 //! searching for correctness here.
 
+pub use crate::transport::Message;
 pub use crate::transport::Transport;
 pub use crate::transport::TransportConfiguration;
 pub use crate::transport::TransportConfigurationBuilder;

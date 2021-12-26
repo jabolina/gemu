@@ -228,7 +228,7 @@ impl Transport {
     /// #         .with_partition("example-partition")
     /// #         .build().unwrap();
     /// #     let mut  transport = abro::Transport::new(configuration).await.unwrap();
-    /// #     let message = Message::new("destination-partition", "Hello, world!");
+    /// #     let message = abro::Message::new("destination-partition", "Hello, world!");
     /// let result = transport.send(message).await;
     /// assert!(result.is_ok());
     /// # }
@@ -251,7 +251,7 @@ impl Transport {
     ///
     /// This method has some limitations, verify in the library section for the limitations and the
     /// [`EtcdWrapper::watch`] method for some comments.
-    async fn listen<F, T>(&mut self, f: F)
+    pub async fn listen<F, T>(&mut self, f: F)
     where
         F: Fn(crate::Result<String>) -> T,
         T: Future<Output = crate::Result<bool>>,
@@ -292,7 +292,8 @@ mod tests {
         let response = nd_transport.send(message).await;
         assert!(response.is_ok());
 
-        handle.await;
+        let result = handle.await;
+        assert!(result.is_ok());
     }
 
     async fn create_transport(partition: &str) -> Transport {
