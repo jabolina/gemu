@@ -13,7 +13,7 @@ pub(crate) struct Shutdown {
 }
 
 impl Shutdown {
-    /// Create new [`Alive`] structure that will listen to the given channel.
+    /// Create new [`Shutdown`] structure that will listen to the given channel.
     pub(crate) fn new(rx: broadcast::Receiver<()>) -> Self {
         Shutdown {
             shutdown: false,
@@ -33,7 +33,8 @@ impl Shutdown {
             return;
         }
 
-        self.rx.recv().await;
+        // Does not matter what is the result, only that a result has happened at all.
+        let _ = self.rx.recv().await;
         self.shutdown = true;
     }
 }

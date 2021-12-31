@@ -4,7 +4,6 @@
 //! incoming messages. This structure is composed by a client and a server, and is responsible to
 //! handle both structures in any means necessary.
 use bytes::{Buf, BytesMut};
-use std::io::Cursor;
 use tokio::io::{AsyncReadExt, AsyncWriteExt, BufWriter};
 use tokio::net::TcpStream;
 
