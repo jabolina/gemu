@@ -55,6 +55,13 @@ impl TcpConnection {
 
     pub(crate) async fn write(&mut self, data: String) -> crate::Result<()> {
         self.stream.write_all(data.as_bytes()).await?;
+        self.stream.flush().await?;
         Ok(())
+    }
+}
+
+impl From<std::io::Error> for crate::Error {
+    fn from(e: std::io::Error) -> Self {
+        crate::Error::SocketError(e.to_string())
     }
 }

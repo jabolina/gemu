@@ -1,16 +1,28 @@
 #[tokio::main]
 async fn main() {
-    let transport = mepa::create_server(8080).await;
-    assert!(transport.is_ok());
+    let (mut receiver, mut sender) = mepa::create(8080).await.expect("Failed creating transport");
 
-    let mut transport = transport.unwrap();
-    let poll = transport.poll(|s| async move {
+    let messages = tokio::spawn(async move {
+        loop {
+            let mut message = String::new();
+            println!("Write:");
+            std::io::stdin()
+                .read_line(&mut message)
+                .expect("Could not read line!");
+
+            if message.trim() == "quit" {
+                break;
+            }
+
+            sender
+                .send("localhost:8080", message.trim())
+                .await
+                .expect("Failed sending!");
+        }
+    });
+    let poll = receiver.poll(|s| async move {
         println!("DATA: {}", s);
     });
-    let await_polling = async move {
-        poll.await;
-        ()
-    };
 
-    tokio::join!(await_polling);
+    tokio::join!(poll, messages);
 }

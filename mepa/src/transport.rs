@@ -1,12 +1,12 @@
+use crate::client::ClientManager;
 use crate::server::TcpServer;
 use std::future::Future;
-use tokio::net::ToSocketAddrs;
 use tokio::signal;
 use tokio::sync::mpsc;
 
 /// The unique piece that the user interacts with, used to listen for incoming messages and to
 /// send messages to other sockets. The underlying implementation is using TCP sockets.
-pub struct Transport {
+pub struct Receiver {
     // A multiple producer and single consumer channel from tokio. The single consumer is the
     // transport structure itself, and for each incoming connection a new producer is created.
     // This is used gather messages sent by other peers using a single channel, avoiding the need
@@ -15,6 +15,19 @@ pub struct Transport {
 
     // The underlying server, the server holds the stream and accepts connections.
     server: TcpServer,
+}
+
+pub struct Sender {
+    client: ClientManager,
+}
+
+impl Sender {
+    /// Used to send a message to another address.
+    ///
+    /// The data must be serializable in order to be written to the socket as bytes.
+    pub async fn send(&mut self, destination: &str, data: impl ToString) -> crate::Result<()> {
+        self.client.write_to(destination, data).await
+    }
 }
 
 /// Entrypoint for creating a new [`Transport`] structure.
@@ -44,14 +57,18 @@ pub struct Transport {
 /// # Errors
 ///
 /// This method will fail if is not possible to bind to the port given as argument.
-pub async fn create_server(port: usize) -> crate::Result<Transport> {
+pub async fn create(port: usize) -> crate::Result<(Receiver, Sender)> {
     // The channel will hold 1024 messages before starting blocking producers.
     let (data_tx, data_rx) = mpsc::channel(1024);
     let server = crate::server::bind(port, data_tx).await?;
-    Ok(Transport { data_rx, server })
+    let receiver = Receiver { data_rx, server };
+    let sender = Sender {
+        client: ClientManager::new(),
+    };
+    Ok((receiver, sender))
 }
 
-impl Transport {
+impl Receiver {
     /// Start polling, accepting new socket connections and publishing the received messages.
     ///
     /// This method receive as argument a function that will be called every time a new message is
@@ -91,17 +108,6 @@ impl Transport {
         }
 
         self.server.shutdown();
-        Ok(())
-    }
-
-    /// Used to send a message to another address.
-    ///
-    /// The data must be serializable in order to be written to the socket as bytes.
-    pub async fn send<T: ToSocketAddrs>(
-        &self,
-        destination: T,
-        data: impl ToString,
-    ) -> crate::Result<()> {
         Ok(())
     }
 }

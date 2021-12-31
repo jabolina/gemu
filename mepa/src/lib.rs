@@ -36,8 +36,9 @@
 //! Since we are learning, we will use [`tokio`] all around, along with some other crates to help,
 //! which are the [`tokio-stream`], [`async-stream`] and [`futures-util`].
 
-pub use crate::transport::create_server;
-pub use crate::transport::Transport;
+pub use crate::transport::create;
+pub use crate::transport::Receiver;
+pub use crate::transport::Sender;
 mod client;
 mod server;
 mod shutdown;
