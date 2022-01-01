@@ -22,9 +22,7 @@ pub(crate) struct TcpConnectionReader {
     // data from the TCP socket.
     stream: BufReader<TcpStream>,
 
-    // Used to help when we read data from the stream. Data will be read in chunks the size of this
-    // buffer, so at this time we have no conception of frame whatsoever, so is possible that is
-    // split between multiple chunks.
+    // Used to help when we read data from the stream.
     buffer: BytesMut,
 }
 
@@ -81,8 +79,7 @@ impl TcpConnection {
 
 impl TcpConnectionReader {
     /// Create a new instance of the socket wrapper. This will start with a buffer of 8Kb size that
-    /// will be used to read data from the underlying stream, this means that varying on the
-    /// package size, it could be split between multiple chunks.
+    /// will be used to read data from the underlying stream.
     fn new(socket: TcpStream) -> Self {
         Self {
             stream: BufReader::new(socket),
@@ -122,8 +119,7 @@ impl TcpConnectionReader {
     /// Read data from the underlying socket connection.
     ///
     /// This method will return only if data is found, if no bytes are returned from the read or
-    /// if the connection is closed by the peer. Since the data is buffered, the data is read in
-    /// chunks.
+    /// if the connection is closed by the peer.
     ///
     /// # Errors
     ///

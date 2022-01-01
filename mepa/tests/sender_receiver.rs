@@ -1,8 +1,17 @@
-/// Here we are creating both the receiver and sender. The receiver is spawned in another thread
-/// along with a mpsc sender channel. The sender will publish 15 messages and then use the mpsc
-/// receiver to wait for the messages sent previously.
-/// There is a lazy person workaround here, if we send all messages at once, the reader can read
-/// everything in a single chunk, so this test could never finish, so we added a 5s timeout.
+/// All tests written here are following the same methodology. We are creating a sender and
+/// receiver, then we proceed to spawn the transmitter in another thread to transmit the incoming
+/// data and publish it back through a mpsc channel.
+///
+/// Meanwhile the sender will proceed to send the data to the receiver, we have different tests for
+/// different data types:
+///
+/// 1. Sending thousands of small data
+/// 2. Sending few chunks of 512 bytes
+/// 3. Sending a single large chunk
+///
+/// Then we block and listen the mpsc listener, where we must receive the complete data that was
+/// published previously. A 5 second timeout is used so we do not hang forever in these tests.
+
 #[tokio::test]
 async fn send_and_receive_messages() {
     let transport = mepa::create(0).await;
@@ -22,11 +31,11 @@ async fn send_and_receive_messages() {
         assert!(receiver.poll(|s| publish(s, tx.clone())).await.is_ok());
     });
 
-    for i in 0..15 {
+    for i in 0..1500 {
         assert!(sender.send(destination, i).await.is_ok());
     }
 
-    for _ in 0..15 {
+    for _ in 0..1500 {
         let data = tokio::time::timeout(std::time::Duration::from_secs(5), rx.recv()).await;
         assert!(data.is_ok());
         let data = data.unwrap();
@@ -103,7 +112,7 @@ async fn send_receive_single_large_chunk() {
     assert_eq!(data.len(), CHUNK_SIZE);
 }
 
-/// Binding can return an error.
+/// Binding will return an error.
 #[tokio::test]
 async fn duplicate_bind_returns_error() {
     let st_rx = mepa::create_rx(12355).await;
