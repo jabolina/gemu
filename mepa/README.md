@@ -12,19 +12,21 @@ existent project.
 We designed a simple architecture to handle received messages and messages to be sent. The
 diagram bellow is a high level view of how the components will interact.
 
-┌────────┐                                         ┌──────────────┐         ┌────────────┐
-│        ◄─────────────────poll────────────────────┤              │         │            │
-│        │                                         │   Receiver   ◄───Read──┤   Server   ◄────Read────┐
-│        │                                         │              │         │            │            │
-│        │            ┌─────────────────┐          └──────┬───────┘         └────────────┘    ┌───────┴────────┐
-│        │            │                 │                 │                                   │                │
-│  User  ├───create───►    Transport    ├─────Create──────┤                                   │   Connection   │
-│        │            │                 │                 │                                   │                │
-│        │            └─────────────────┘           ┌─────┴──────┐          ┌────────────┐    └───────▲────────┘
-│        │                                          │            │          │            │            │
-│        ├─────────────────write────────────────────►   Sender   ├──Write───►   Client   ├───Write────┘
-└────────┘                                          │            │          │            │
-                                                    └────────────┘          └────────────┘
+```text
++--------+                                         +--------------+         +------------+
+|        <-----------------poll--------------------+              |         |            |
+|        |                                         |   Receiver   <---Read--+   Server   <----Read----+
+|        |                                         |              |         |            |            |
+|        |            +-----------------+          +------+-------+         +------------+    +-------+--------+
+|        |            |                 |                 |                                   |                |
+|  User  +---create--->    Transport    +-----Create------+                                   |   Connection   |
+|        |            |                 |                 |                                   |                |
+|        |            +-----------------+           +-----+------+          +------------+    +-------^--------+
+|        |                                          |            |          |            |            |
+|        +-----------------write-------------------->   Sender   +--Write--->   Client   +---Write----+
++--------+                                          |            |          |            |
+                                                    +------------+          +------------+
+```
 
 The `User` component represents the final user itself. The main block here is the `Transport`,
 through this component the use can create an instance of the [`Receiver`] and [`Sender`], these
