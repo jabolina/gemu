@@ -89,12 +89,15 @@
 //! [`BufReader`]: tokio::io::BufWriter
 //! [`mini-redis`]: https://github.com/tokio-rs/mini-redis
 
+use crate::parser::ParseError;
 pub use crate::transport::create;
 pub use crate::transport::create_rx;
 pub use crate::transport::create_tx;
 pub use crate::transport::Receiver;
 pub use crate::transport::Sender;
+
 mod client;
+mod parser;
 mod server;
 mod shutdown;
 mod tcp_connection;
@@ -108,6 +111,7 @@ pub enum Error {
     ConnectionReset,
     SocketError(String),
     ConnectionType(String),
+    FrameError(ParseError),
 }
 
 /// A convenience type that will be used in all operations for the current library.

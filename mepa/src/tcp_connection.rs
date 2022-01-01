@@ -1,4 +1,6 @@
+use crate::parser;
 use bytes::{Buf, BytesMut};
+use std::io::Cursor;
 use tokio::io::{AsyncReadExt, AsyncWriteExt, BufReader, BufWriter};
 use tokio::net::TcpStream;
 
@@ -94,22 +96,26 @@ impl TcpConnectionReader {
     /// String representation. If the received bytes are not an accepted UTF-8 sequence we will
     /// discard the values by advancing the buffer to "consume" the invalid sequence and returning
     /// `None`, since we were not able to parse the data.
-    fn try_read_buffer(&mut self) -> Option<String> {
-        if self.buffer.is_empty() {
-            return None;
-        }
+    fn try_read_buffer(&mut self) -> crate::Result<Option<String>> {
+        // Here we are creating a cursor because this wrapper can aid while parsing the underlying
+        // data with some convenience methods.
+        let mut buf = Cursor::new(&self.buffer[..]);
+        match parser::read_buffer(&mut buf) {
+            Ok(data) => {
+                // We were able to consume the data using the buffer within the cursor helper, but
+                // in our local buffer the data was not consumed yet, so we need to advance the
+                // position and the data will be declared as consumed.
+                let len = buf.position() as usize;
+                self.buffer.advance(len);
+                Ok(Some(data))
+            }
 
-        // Read the buffered data and advance the buffer.
-        match std::str::from_utf8(&self.buffer.to_vec()) {
-            Ok(s) => {
-                self.buffer.advance(s.len());
-                Some(String::from(s))
-            }
-            Err(..) => {
-                // Is this the correct workaround to discard the invalid UTF-8 sequence?
-                self.buffer.advance(self.buffer.len());
-                None
-            }
+            // This means that we were not able to retrieve the complete data from the buffer yet,
+            // so we just return an Ok saying that None data was found.
+            Err(parser::ParseError::Incomplete) => Ok(None),
+
+            // Something went wrong while reading the buffer.
+            Err(e) => Err(e.into()),
         }
     }
 
@@ -122,10 +128,9 @@ impl TcpConnectionReader {
     /// # Errors
     ///
     /// The returned [`crate:Error`] is returned when the connection is closed by the peer.
-    // TODO: handle reading more carefully, create a frame abstraction?
     async fn read(&mut self) -> crate::Result<Option<String>> {
         loop {
-            if let Some(v) = self.try_read_buffer() {
+            if let Some(v) = self.try_read_buffer()? {
                 return Ok(Some(v));
             }
 
@@ -148,24 +153,15 @@ impl TcpConnectionWriter {
         }
     }
 
-    /// Write the data into the stream.
-    ///
-    /// Given a serialized data, the complete value will be written to the socket and flushed. This
-    /// is probably doing a single syscall?
+    /// Write the data into the stream. Given a serialized data, the complete value will be written
+    /// to the socket and flushed. We are using the dedicated parser to write the data.
     ///
     /// # Errors
     ///
     /// This can fail for any I/O error that can happen either while writing or flushing the data.
     async fn write(&mut self, data: String) -> crate::Result<()> {
-        self.stream.write_all(data.as_bytes()).await?;
+        parser::write_buffer(&mut self.stream, data).await?;
         self.stream.flush().await?;
         Ok(())
-    }
-}
-
-/// Parse a [`std::io::Error`] that can happen while writing data to the expected [`crate::Error`].
-impl From<std::io::Error> for crate::Error {
-    fn from(e: std::io::Error) -> Self {
-        crate::Error::SocketError(e.to_string())
     }
 }
