@@ -28,7 +28,6 @@ pub(crate) struct EtcdWrapper {
     /// in the current partition only. This partition must be a complete match over the key in
     /// the etcd KV store, meaning that we are not watching for prefixes, we are watching the
     /// complete key.
-    #[allow(dead_code)]
     partition: String,
 }
 

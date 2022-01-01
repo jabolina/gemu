@@ -5,11 +5,8 @@ edition = "2021"
 authors = ["Jose <jabolina@protonmail.ch>"]
 
 [dependencies]
-async-stream = "0.3.2"
 bytes = "1"
-futures-util = "0.3.19"
 tokio = { version = "1.15.0", features = ["full"] }
-tokio-stream = "0.1.8"
 
 [dev-dependencies]
 tokio = { version = "1.15.0", features = ["test-util"] }

@@ -3,7 +3,7 @@
 A minimal project that offers a transport primitive backed by TCP.
 
 The main purpose of this project is to abstract all complexity and offer a high level
-communication primitive to be used by other projects. Here we are looking forward to offer a
+communication primitive to be used by other projects. Here we are looking forward to offering a
 simple TCP communication between a pair of peers, nothing too fancy. First things first,
 everything here is heavily based on the [`mini-redis`] implementation by the Tokio team, so,
 even when we simplify the components keep in mind that we are pretty much following an already
@@ -12,31 +12,31 @@ existent project.
 We designed a simple architecture to handle received messages and messages to be sent. The
 diagram bellow is a high level view of how the components will interact.
 
-```text
-+--------+                                         +--------------+         +------------+
-|        <-----------------poll--------------------+              |         |            |
-|        |                                         |   Receiver   <---Read--+   Server   <----Read----+
-|        |                                         |              |         |            |            |
-|        |            +-----------------+          +------+-------+         +------------+    +-------+--------+
-|        |            |                 |                 |                                   |                |
-|  User  +---create--->    Transport    +-----Create------+                                   |   Connection   |
-|        |            |                 |                 |                                   |                |
-|        |            +-----------------+           +-----+------+          +------------+    +-------^--------+
-|        |                                          |            |          |            |            |
-|        +-----------------write-------------------->   Sender   +--Write--->   Client   +---Write----+
-+--------+                                          |            |          |            |
-                                                    +------------+          +------------+
+```
+┌────────┐                                         ┌──────────────┐         ┌────────────┐
+│        ◄─────────────────poll────────────────────┤              │         │            │
+│        │                                         │   Receiver   ◄───Read──┤   Server   ◄────Read────┐
+│        │                                         │              │         │            │            │
+│        │            ┌─────────────────┐          └──────┬───────┘         └────────────┘    ┌───────┴────────┐
+│        │            │                 │                 │                                   │                │
+│  User  ├───create───►    Transport    ├─────Create──────┤                                   │   Connection   │
+│        │            │                 │                 │                                   │                │
+│        │            └─────────────────┘           ┌─────┴──────┐          ┌────────────┐    └───────▲────────┘
+│        │                                          │            │          │            │            │
+│        ├─────────────────write────────────────────►   Sender   ├──Write───►   Client   ├───Write────┘
+└────────┘                                          │            │          │            │
+                                                    └────────────┘          └────────────┘
 ```
 
 The `User` component represents the final user itself. The main block here is the `Transport`,
 through this component the use can create an instance of the [`Receiver`] and [`Sender`], these
-structures can be create together or separately.
+structures can be created together or separately.
 
 ## Receiving data
 
 The [`Receiver`] will have a two methods exposed to the user, one to retrieve the local address
 using the [`SocketAddr`] format and another method to start polling. This polling method is
-responsible to accepting incoming connections, it receives a asynchronous function as argument,
+responsible to accepting incoming connections, it receives an asynchronous function as argument,
 this function will be called any time a new message is received. The polling method should be
 called just after the creation of the [`Receiver`], this method will block until an error occur
 or a CTRL-C signal is received.
@@ -51,7 +51,7 @@ with a [`BufReader`]. At this moment, there is no conception of a frame, so mess
 split into multiple chunks, depending on the data size and the buffer status.
 
 When the server is shutdown, the [`Receiver`] will try to execute a graceful shutdown, waiting
-for all established handlers to finish any processing. We did using the mpsc channels for
+for all established handlers to finish any processing. We used the mpsc channels for
 notifications.
 
 ## Sending data
