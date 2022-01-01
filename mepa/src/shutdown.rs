@@ -5,10 +5,10 @@ use tokio::sync::broadcast;
 /// This structure receives a [`broadcast::Receiver`] as an argument that receives only a single
 /// value, after the value is received the structure will shutdown.
 pub(crate) struct Shutdown {
-    // This will be set to `true` once the `killed` method is called.
+    // Identify if the shutdown signal was received.
     shutdown: bool,
 
-    // Channel to receive the notification about the structure death.
+    // Channel to receive the shutdown notification.
     rx: broadcast::Receiver<()>,
 }
 
@@ -44,20 +44,21 @@ mod tests {
     use crate::shutdown::Shutdown;
     use tokio::sync::broadcast;
 
+    /// A simple test verifying that the shutdown status change only after receiving a signal.
     #[tokio::test]
     async fn should_be_on_until_shutdown() {
         let (tx, _) = broadcast::channel(1);
-        let mut alive = Shutdown::new(tx.subscribe());
+        let mut shutdown = Shutdown::new(tx.subscribe());
 
-        assert!(alive.is_shut());
+        assert!(!shutdown.is_shut());
 
         let shut = tokio::spawn(async move {
             assert!(tx.send(()).is_ok());
         });
 
-        alive.wait_shutdown().await;
+        shutdown.wait_shutdown().await;
 
-        assert!(!alive.is_shut());
+        assert!(shutdown.is_shut());
         assert!(shut.await.is_ok());
     }
 }

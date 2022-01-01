@@ -1,5 +1,6 @@
 use crate::shutdown::Shutdown;
 use crate::tcp_connection::TcpConnection;
+use std::net::SocketAddr;
 use tokio::net::TcpStream;
 use tokio::sync::mpsc::error::SendError;
 use tokio::sync::{broadcast, mpsc};
@@ -22,6 +23,13 @@ pub struct TcpServer {
 
     // Used to manage the shutdown process.
     shutdown_tx: broadcast::Sender<()>,
+
+    // Both channel are used to execute a graceful server shutdown, were we will wait for all
+    // handlers to be dropped so only then we will finish the server itself. We clone the sender
+    // part to all spawned handler, at shutdown we use the receiver to know that everything was
+    // dropped.
+    graceful_rx: mpsc::Receiver<()>,
+    graceful_tx: mpsc::Sender<()>,
 }
 
 /// A handler is a handler for a specific incoming connection that is established successfully.
@@ -36,6 +44,9 @@ struct Handler {
 
     // Used to write any received data.
     data_tx: mpsc::Sender<String>,
+
+    // Used to know that the handler was dropped.
+    _scope: mpsc::Sender<()>,
 }
 
 /// Through this step we are able to create a new [`tokio::net::TcpListener`] that will bind to the
@@ -47,12 +58,15 @@ struct Handler {
 /// This method will fail only if is not possible to bind to the door passed as argument.
 pub(crate) async fn bind(port: usize, data_tx: mpsc::Sender<String>) -> crate::Result<TcpServer> {
     let (shutdown_tx, _) = broadcast::channel(1);
+    let (graceful_tx, graceful_rx) = mpsc::channel(1);
     let listener = tokio::net::TcpListener::bind(&format!("127.0.0.1:{}", port)).await?;
 
     Ok(TcpServer {
         listener,
         data_tx,
         shutdown_tx,
+        graceful_rx,
+        graceful_tx,
     })
 }
 
@@ -68,29 +82,37 @@ impl TcpServer {
     /// that we can stop if too many errors happen when accepting new connections. An exponential
     /// backoff is implemented in order to avoid retries too soon.
     pub(crate) async fn poll(&mut self) -> crate::Result<()> {
-        println!("Start to listen for connections");
         loop {
             // Tries to accept new connections. Because of the error handling that happens inside
             // the method is possible that we fail and stop up to the point of closing the server.
             let socket = self.accept().await?;
             let mut handler = Handler {
-                connection: TcpConnection::new(socket),
+                connection: TcpConnection::new_reader(socket),
                 shutdown: Shutdown::new(self.shutdown_tx.subscribe()),
                 data_tx: self.data_tx.clone(),
+                _scope: self.graceful_tx.clone(),
             };
             tokio::spawn(async move {
                 if let Err(e) = handler.process().await {
                     eprintln!("Connection error: {:?}", e);
                 }
-                println!("Connection closed");
             });
         }
     }
 
+    pub(crate) fn local_address(&self) -> crate::Result<SocketAddr> {
+        let address = self.listener.local_addr()?;
+        Ok(address)
+    }
+
     /// Starts the shutdown process, this method may not return right away, since it can depend
     /// on multiple accepted connections to be finished.
-    pub(crate) fn shutdown(&self) {
-        drop(self.shutdown_tx.to_owned())
+    pub(crate) async fn shutdown(&mut self) {
+        drop(self.shutdown_tx.to_owned());
+        drop(self.shutdown_tx.to_owned());
+
+        // Here we wait for all Handlers to go out of scope before returning.
+        let _ = self.graceful_rx.recv().await;
     }
 
     /// Accept inbound connections.
