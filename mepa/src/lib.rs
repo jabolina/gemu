@@ -77,11 +77,6 @@
 //! using the [`mini-redis`] project as a guide, the usage for the buffered decoration maybe
 //! is not the best approach, but at this time I do not know what we could use there.
 //!
-//! The lack of frame definition is also something that could be improved. At this time, we only
-//! read what the buffer can handle, and that probably could lead to losing some data. Would be
-//! nice to create a frame definition, so we could parse data correctly and stop publishing data
-//! in chunks to the user layer.
-//!
 //! [`Receiver`]: crate::transport::Receiver
 //! [`Sender`]: crate::transport::Sender
 //! [`SocketAddr`]: std::net::SocketAddr
