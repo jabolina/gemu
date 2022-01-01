@@ -171,6 +171,13 @@ impl TcpClient {
     }
 }
 
+/// Parse a [`std::io::Error`] that can happen while writing data to the expected [`crate::Error`].
+impl From<std::io::Error> for crate::Error {
+    fn from(e: std::io::Error) -> Self {
+        crate::Error::SocketError(e.to_string())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::client::ClientManager;
