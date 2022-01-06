@@ -1,15 +1,13 @@
 [package]
-name = "abro"
+name = "gemu"
 version = "0.1.0"
 edition = "2021"
 authors = ["jab <jabolina@protonmail.ch>"]
 
 [dependencies]
-async-stream = "0.3.2"
-etcd-client = "0.8.2"
-futures-util = "0.3.19"
 tokio = { version = "1.15.0", features = ["full"] }
-tokio-stream = "0.1.8"
+mepa = { path = "../mepa" }
+abro = { path = "../abro" }
 
 [dev-dependencies]
 tokio = { version = "1.15.0", features = ["test-util"] }
