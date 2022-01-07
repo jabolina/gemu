@@ -85,7 +85,7 @@
 //! [`mini-redis`]: https://github.com/tokio-rs/mini-redis
 
 use crate::parser::ParseError;
-pub use crate::transport::create;
+pub use crate::transport::channel;
 pub use crate::transport::create_rx;
 pub use crate::transport::create_tx;
 pub use crate::transport::Receiver;

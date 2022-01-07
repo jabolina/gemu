@@ -14,10 +14,10 @@
 
 #[tokio::test]
 async fn send_and_receive_messages() {
-    let transport = mepa::create(0).await;
+    let transport = mepa::channel(0).await;
     assert!(transport.is_ok());
 
-    let (mut receiver, mut sender) = transport.unwrap();
+    let (mut sender, mut receiver) = transport.unwrap();
     let destination = receiver.local_address();
     let (tx, mut rx) = tokio::sync::mpsc::channel(15);
 
@@ -45,10 +45,10 @@ async fn send_and_receive_messages() {
 
 #[tokio::test]
 async fn send_receive_multiple_chunks() {
-    let transport = mepa::create(0).await;
+    let transport = mepa::channel(0).await;
     assert!(transport.is_ok());
 
-    let (mut receiver, mut sender) = transport.unwrap();
+    let (mut sender, mut receiver) = transport.unwrap();
     let destination = receiver.local_address();
     let (tx, mut rx) = tokio::sync::mpsc::channel(15);
 
@@ -82,10 +82,10 @@ async fn send_receive_multiple_chunks() {
 #[tokio::test]
 async fn send_receive_single_large_chunk() {
     const CHUNK_SIZE: usize = 2 * 8 * 1024;
-    let transport = mepa::create(0).await;
+    let transport = mepa::channel(0).await;
     assert!(transport.is_ok());
 
-    let (mut receiver, mut sender) = transport.unwrap();
+    let (mut sender, mut receiver) = transport.unwrap();
     let destination = receiver.local_address();
     let (tx, mut rx) = tokio::sync::mpsc::channel(15);
 

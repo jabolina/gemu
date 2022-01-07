@@ -41,11 +41,11 @@ pub struct Sender {
 /// # Examples
 ///
 /// ```
-/// use mepa::create;
+/// use mepa::channel;
 ///
 /// #[tokio::main]
 /// async fn main() {
-///     let transport = create(13666).await;
+///     let transport = channel(13666).await;
 /// #    assert!(transport.is_ok());
 ///     let (rx, tx) = transport.unwrap();
 ///     // rx.poll...
@@ -56,10 +56,10 @@ pub struct Sender {
 /// # Errors
 ///
 /// This method will fail if is not possible to bind to the port given as argument.
-pub async fn create(port: usize) -> crate::Result<(Receiver, Sender)> {
+pub async fn channel(port: usize) -> crate::Result<(Sender, Receiver)> {
     let receiver = create_rx(port).await?;
     let sender = create_tx();
-    Ok((receiver, sender))
+    Ok((sender, receiver))
 }
 
 /// Create a [`Receiver`] that bind to the given port.
