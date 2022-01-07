@@ -65,8 +65,10 @@
 //! But I will not handle this right now, since I only want to learn Rust and I am not really
 //! searching for correctness here.
 
+pub use crate::transport::channel;
 pub use crate::transport::Message;
-pub use crate::transport::Transport;
+pub use crate::transport::Receiver;
+pub use crate::transport::Sender;
 pub use crate::transport::TransportConfiguration;
 pub use crate::transport::TransportConfigurationBuilder;
 pub mod transport;
@@ -84,8 +86,8 @@ pub enum Error {
     SendError(String),
 
     /// This error occur if a required configuration argument is missing. One example, when we
-    /// are creating a new [`Transport`] primitive, we have the connect to the etcd server, if
-    /// an argument is missing we will fail with this error.
+    /// are creating a new primitive, we have the connect to the etcd server, if an argument is
+    /// missing we will fail with this error.
     MissingConfiguration(String),
 
     /// This is the broad generic error, used when we are not able to perfectly identify
