@@ -15,23 +15,36 @@ use etcd_client::Error;
 use std::str;
 use tokio_stream::Stream;
 
-/// This is the wrapper around the `etcd` client.
+/// This is the wrapper around the `etcd` KV client.
 ///
-/// This structure holds both the etcd client and the bounded partition value. A new structure
-/// can only be create successfully if we are able to connect to the etcd server.
-pub(crate) struct EtcdWrapper {
-    /// The etcd connection, which will be used to write values and to watch for changes that
-    /// are applied in our [`EtcdWrapper::partition`].
+/// Using this structure we can write to the underlying KV store, in order to simulate the atomic
+/// broadcast primitive. Note that this client is used for the only purpose of sending messages,
+/// is not possible to receive messages using the [`EtcdWriter`].
+pub(crate) struct EtcdWriter {
+    // The client for the underlying etcd KV.
+    client: etcd::KvClient,
+}
+
+/// This is a wrapper around the actual `etcd` client.
+///
+/// Although this structure holds the client itself, it will be used only for watching for new
+/// messages. Wrapping around the client itself, we can create a [`WatchClient`] and listen for
+/// changes without the need for a mutable reference for self.
+///
+/// [`WatchClient`]: etcd::WatchClient,
+pub(crate) struct EtcdReceiver {
+    // The etcd connection, which will be used to watch for changes that are applied in the current
+    // peer partition.
     client: etcd::Client,
 
-    /// The partition in which the peer in bound. This is used to watch for changes that happen
-    /// in the current partition only. This partition must be a complete match over the key in
-    /// the etcd KV store, meaning that we are not watching for prefixes, we are watching the
-    /// complete key.
+    // The partition in which the peer in bound. This is used to watch for changes that happen
+    // in the current partition only. This partition must be a complete match over the key in
+    // the etcd KV store, meaning that we are not watching for prefixes, we are watching the
+    // complete key.
     partition: String,
 }
 
-impl EtcdWrapper {
+impl EtcdWriter {
     /// Write the value to a given partition. The value *must* must implement the [`Into<String>`]
     /// trait so it can be serialized before sending using the [`EtcdWrapper::etcd`] client.
     ///
@@ -47,7 +60,9 @@ impl EtcdWrapper {
             Ok(_) => Ok(()),
         }
     }
+}
 
+impl EtcdReceiver {
     /// Create a stream of changes applied to the peer current partition.
     ///
     /// A peer will only receive events of changes that occur since the last compaction, this is
@@ -88,7 +103,8 @@ impl EtcdWrapper {
     /// commit the transaction. Although I feel that this could not be enough, for example, the
     /// Kafka team solution for exactly-once semantics is somewhat complex.
     #[allow(unused_must_use)]
-    pub(crate) async fn watch<'a>(&'a mut self) -> impl Stream<Item = crate::Result<String>> + 'a {
+    pub(crate) async fn watch<'a>(&'a self) -> impl Stream<Item = crate::Result<String>> + 'a {
+        let mut watch_client = self.client.watch_client();
         try_stream! {
             // We will start watching from the very first revision since the last compaction,
             // so we define the starting revision to `1`. The value `0` indicates the absence
@@ -98,7 +114,7 @@ impl EtcdWrapper {
 
             // Here we start watching the specified partition key. Should we also offer the possibility
             // to watch a prefix of a key? We could create something similar to an exchange here.
-            let (mut watcher, mut stream) = self.client.watch(self.partition.as_str(), Some(options)).await?;
+            let (mut watcher, mut stream) = watch_client.watch(self.partition.as_str(), Some(options)).await?;
             while let Some(events) = stream.message().await? {
                 // If the events are cancelled somehow, we will also cancel our watcher. I suppose
                 // this means that the stream will end?
@@ -138,12 +154,19 @@ impl From<etcd::Error> for crate::Error {
 ///
 /// This method can fail if we are unable to connect to the etcd server using the given address.
 ///
-pub(crate) async fn connect(address: &str, partition: &str) -> crate::Result<EtcdWrapper> {
+pub(crate) async fn connect(
+    address: &str,
+    partition: &str,
+) -> crate::Result<(EtcdWriter, EtcdReceiver)> {
     let client = etcd::Client::connect([address], None).await?;
-    Ok(EtcdWrapper {
+    let writer = EtcdWriter {
+        client: client.kv_client(),
+    };
+    let receiver = EtcdReceiver {
         client,
-        partition: partition.to_string(),
-    })
+        partition: String::from(partition),
+    };
+    Ok((writer, receiver))
 }
 
 #[cfg(test)]
@@ -161,8 +184,8 @@ mod tests {
         let wrapper = connect("localhost:2379", partition).await;
         assert!(wrapper.is_ok());
 
-        let mut wrapper = wrapper.unwrap();
-        let request = wrapper.write(partition, "hello").await;
+        let (mut tx, _) = wrapper.unwrap();
+        let request = tx.write(partition, "hello").await;
 
         assert!(request.is_ok());
     }
@@ -194,21 +217,18 @@ mod tests {
         let published_data = "horray!";
         let address = "localhost:2379";
 
-        let st_peer = connect(address, partition).await;
-        let nd_peer = connect(address, partition).await;
+        let wrapper = connect(address, partition).await;
 
-        assert!(st_peer.is_ok());
-        assert!(nd_peer.is_ok());
+        assert!(wrapper.is_ok());
 
-        let mut st_peer = st_peer.unwrap();
-        let mut nd_peer = nd_peer.unwrap();
+        let (mut tx, rx) = wrapper.unwrap();
 
-        let write = nd_peer.write(partition, published_data).await;
+        let write = tx.write(partition, published_data).await;
         assert!(write.is_ok());
 
         let response = tokio::spawn(async move {
             tokio::time::timeout(std::time::Duration::from_secs(10), async move {
-                let stream = st_peer.watch().await;
+                let stream = rx.watch().await;
                 pin_mut!(stream);
                 while let Some(v) = stream.next().await {
                     assert!(v.is_ok());

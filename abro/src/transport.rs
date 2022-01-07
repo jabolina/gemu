@@ -5,7 +5,7 @@
 //! 'send' and 'receive' API, being simple to avoid any complexity that start growing from
 //! the start of the project.
 
-use crate::wrapper::{connect, EtcdWrapper};
+use crate::wrapper::{connect, EtcdReceiver, EtcdWriter};
 use futures_util::{pin_mut, StreamExt};
 use std::future::Future;
 
@@ -131,11 +131,20 @@ impl TransportConfigurationBuilder {
     }
 }
 
-/// The transport primitive that the user will interact to send and receive messages.
-pub struct Transport {
-    /// Holds the wrapper around the [`etcd_client`]. The transport primitive will transform
-    /// request from the user space to the format expected by [`EtcdWrapper`].
-    client: EtcdWrapper,
+/// The sender part of the pair.
+///
+/// This structure is responsible for sending messages only.
+pub struct Sender {
+    /// The etcd wrapper which can write message onto the KV store.
+    client: EtcdWriter,
+}
+
+/// The receiver part of the pair.
+///
+/// This structure is responsible for receiving messages only.
+pub struct Receiver {
+    /// The etcd wrapper that we can use to receive change notifications.
+    client: EtcdReceiver,
 }
 
 /// The structure used by users to broadcast the content to the given destination.
@@ -148,53 +157,7 @@ pub struct Message {
     content: String,
 }
 
-impl Message {
-    /// Creates a new message, identifying the destination and the content must be serializable.
-    pub fn new(destination: &str, content: impl Into<String>) -> Self {
-        Message {
-            destination: destination.to_string(),
-            content: content.into(),
-        }
-    }
-}
-
-impl Transport {
-    /// Create a new transport primitive.
-    ///
-    /// When creating the primitive we will also create the etcd client and will try to connect to
-    /// the specified etcd server, so we can fail if the server is unreachable.
-    ///
-    /// # Example
-    ///
-    /// ```no_run
-    /// #[tokio::main]
-    /// async fn main() {
-    ///     let configuration = abro::TransportConfiguration::builder()
-    ///         .with_host("localhost")
-    ///         .with_port(2379)
-    ///         .with_partition("example-partition")
-    ///         .build().unwrap();
-    ///
-    ///     let transport = abro::Transport::new(configuration).await;
-    ///
-    ///     assert!(transport.is_ok());
-    /// }
-    /// ```
-    ///
-    /// In this example we created a new [`TransportConfiguration`] using the
-    /// [`TransportConfigurationBuilder`], then we use the `new` method to try to create a new
-    /// [`Transport`] primitive. Note that this method is asynchronous, thus the `main` function
-    /// is also `async`.
-    ///
-    /// # Errors
-    ///
-    /// This method can fail if we are not able to connect to the etcd server using the parameters
-    /// present in the [`TransportConfiguration`], we will return a [`crate::Error`].
-    pub async fn new(configuration: TransportConfiguration) -> crate::Result<Self> {
-        let client = connect(&configuration.address, &configuration.partition).await?;
-        Ok(Transport { client })
-    }
-
+impl Sender {
     /// Broadcast the given message.
     ///
     /// We are receiving a message that identifies a partition in which we will broadcast the
@@ -227,9 +190,9 @@ impl Transport {
     /// #         .with_port(2379)
     /// #         .with_partition("example-partition")
     /// #         .build().unwrap();
-    /// #     let mut  transport = abro::Transport::new(configuration).await.unwrap();
+    /// #     let (mut rx, _) = abro::channel(configuration).await.unwrap();
     /// #     let message = abro::Message::new("destination-partition", "Hello, world!");
-    /// let result = transport.send(message).await;
+    /// let result = rx.send(message).await;
     /// assert!(result.is_ok());
     /// # }
     /// ```
@@ -238,7 +201,9 @@ impl Transport {
             .write(&message.destination, message.content)
             .await
     }
+}
 
+impl Receiver {
     /// Listen for messages that were broadcast to the current partition.
     /// This is a blocking call, so its up to the user to start it the way that better fits the
     /// use case. This will receive a callback to notify any time a new message is received in
@@ -251,7 +216,7 @@ impl Transport {
     ///
     /// This method has some limitations, verify in the library section for the limitations and the
     /// [`EtcdWrapper::watch`] method for some comments.
-    pub async fn listen<F, T>(&mut self, f: F)
+    pub async fn listen<F, T>(&self, f: F)
     where
         F: Fn(crate::Result<String>) -> T,
         T: Future<Output = crate::Result<bool>>,
@@ -271,38 +236,86 @@ impl Transport {
     }
 }
 
+impl Message {
+    /// Creates a new message, identifying the destination and the content must be serializable.
+    pub fn new(destination: &str, content: impl Into<String>) -> Self {
+        Message {
+            destination: destination.to_string(),
+            content: content.into(),
+        }
+    }
+}
+
+/// Create the primitives for sending and receiving.
+///
+/// When creating the primitive we will also create the etcd client and will try to connect to
+/// the specified etcd server, so we can fail if the server is unreachable.
+///
+/// # Example
+///
+/// ```no_run
+/// #[tokio::main]
+/// async fn main() {
+///     let configuration = abro::TransportConfiguration::builder()
+///         .with_host("localhost")
+///         .with_port(2379)
+///         .with_partition("example-partition")
+///         .build().unwrap();
+///
+///     let transport = abro::channel(configuration).await;
+///
+/// #    assert!(transport.is_ok());
+///     let (tx, rx) = transport.unwrap();     
+/// }
+/// ```
+///
+/// In this example we created a new [`TransportConfiguration`] using the
+/// [`TransportConfigurationBuilder`], then we use the `new` method to try to create a the pair
+/// [`Sender`] and [`Receive`] primitives. Note that this method is asynchronous, thus the `main`
+/// function is also `async`.
+///
+/// # Errors
+///
+/// This method can fail if we are not able to connect to the etcd server using the parameters
+/// present in the [`TransportConfiguration`], we will return a [`crate::Error`].
+pub async fn channel(configuration: TransportConfiguration) -> crate::Result<(Sender, Receiver)> {
+    let (tx, rx) = connect(&configuration.address, &configuration.partition).await?;
+    let sender = Sender { client: tx };
+    let receiver = Receiver { client: rx };
+    Ok((sender, receiver))
+}
+
 #[cfg(test)]
 mod tests {
-    use crate::transport::Message;
-    use crate::{Transport, TransportConfiguration};
+    use crate::transport::{channel, Message};
+    use crate::{Receiver, Sender, TransportConfiguration};
 
     #[ignore]
     #[tokio::test]
     async fn should_listen_for_messages() {
-        let mut st_transport = create_transport("partition-1").await;
-        let mut nd_transport = create_transport("partition-2").await;
+        let (mut tx, rx) = create_transport("partition-1").await;
 
         async fn message_handler(data: crate::Result<String>) -> crate::Result<bool> {
             assert!(data.is_ok());
             Ok(false)
         }
-        let handle = tokio::spawn(async move { st_transport.listen(message_handler).await });
+        let handle = tokio::spawn(async move { rx.listen(message_handler).await });
 
         let message = Message::new("partition-1", "hello!");
-        let response = nd_transport.send(message).await;
+        let response = tx.send(message).await;
         assert!(response.is_ok());
 
         let result = handle.await;
         assert!(result.is_ok());
     }
 
-    async fn create_transport(partition: &str) -> Transport {
+    async fn create_transport(partition: &str) -> (Sender, Receiver) {
         let configuration = TransportConfiguration {
             address: String::from("localhost:2379"),
             partition: partition.to_string(),
         };
 
-        let transport = Transport::new(configuration).await;
+        let transport = channel(configuration).await;
 
         assert!(transport.is_ok());
         transport.unwrap()

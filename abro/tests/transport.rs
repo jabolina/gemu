@@ -1,7 +1,7 @@
 //! Some integration tests using the [`abro::Transport`] primitive.
 //!
 //! Note that the tests are ignored since is required an etcd server running to properly work.
-use abro::{Transport, TransportConfiguration};
+use abro::{channel, Receiver, Sender, TransportConfiguration};
 
 /// This test is creating two peers that are bound to different partitions. The second peer created
 /// broadcast the message to the partition of the first peer, then we set the first peer to start
@@ -14,25 +14,23 @@ use abro::{Transport, TransportConfiguration};
 #[tokio::test]
 async fn send_and_receive_message() {
     let content = "HELLO";
-    let mut st_transport = create_transport("send-and-receive-1").await;
-    let mut nd_transport = create_transport("send-and-receive-2").await;
+    let (mut tx, rx) = create_transport("send-and-receive-1").await;
 
     let message = abro::Message::new("send-and-receive-1", content);
-    let sent = nd_transport.send(message).await;
+    let sent = tx.send(message).await;
 
     assert!(sent.is_ok());
 
     let spawned = tokio::spawn(async move {
         tokio::time::timeout(std::time::Duration::from_secs(10), async move {
-            st_transport
-                .listen(|data| async {
-                    assert!(data.is_ok());
+            rx.listen(|data| async {
+                assert!(data.is_ok());
 
-                    let data = data.unwrap();
-                    assert_eq!(data, "HELLO");
-                    Ok(false)
-                })
-                .await
+                let data = data.unwrap();
+                assert_eq!(data, "HELLO");
+                Ok(false)
+            })
+            .await
         })
         .await
     })
@@ -55,12 +53,12 @@ async fn fail_when_etcd_unreachable() {
     assert!(configuration.is_ok());
     let configuration = configuration.unwrap();
 
-    let transport = Transport::new(configuration).await;
+    let transport = channel(configuration).await;
 
     assert!(transport.is_err());
 }
 
-async fn create_transport(partition: &str) -> Transport {
+async fn create_transport(partition: &str) -> (Sender, Receiver) {
     let configuration = TransportConfiguration::builder()
         .with_host("localhost")
         .with_port(2379)
@@ -70,7 +68,7 @@ async fn create_transport(partition: &str) -> Transport {
     assert!(configuration.is_ok());
     let configuration = configuration.unwrap();
 
-    let transport = Transport::new(configuration).await;
+    let transport = channel(configuration).await;
 
     assert!(transport.is_ok());
     transport.unwrap()
