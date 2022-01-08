@@ -17,44 +17,12 @@ use std::net::AddrParseError;
 use std::pin::Pin;
 
 use mepa::Error;
-use tokio::sync::mpsc;
-use tokio::sync::mpsc::error::SendError;
-use tokio::task::JoinError;
 
-/// The process structure responsible for holding all necessary information to send messages and to
-/// correctly shutdown the underlying primitive.
+/// The process structure responsible for sending messages between processes.
 pub(crate) struct ProcessCommunication {
     // The underlying TCP primitive implementation, we hold only the transmitter part, since we
     // only send messages using this structure.
     communication_tx: mepa::Sender,
-}
-
-/// Function responsible to receive new messages from the underlying receiver.
-///
-/// This method should execute during the whole application lifetime, receiving messages until the
-/// signal is received through the channel notifying about the shutdown.
-async fn poll<'a, T: Listener<'a>>(
-    listener: T,
-    mut rx: mepa::Receiver,
-    mut signal: mpsc::Receiver<()>,
-) {
-    let polling = async move {
-        let _ = rx
-            .poll(|data| async {
-                let _ = listener.handle(data).await;
-            })
-            .await;
-    };
-
-    tokio::select! {
-        // The polling method, in a happy way will execute forever without any errors.
-        _ = polling => {}
-
-        // In the happy way, this is the future which will be completed first. When a signal is
-        // received it means that we must stop polling for messages, so we just exit the select
-        // automatically canceling the polling method.
-        _ = signal.recv() => {}
-    };
 }
 
 /// Creates a new [`ProcessCommunication`], this will start polling new message right away.
@@ -70,22 +38,24 @@ async fn poll<'a, T: Listener<'a>>(
 pub(crate) async fn new<'a, T>(
     port: usize,
     listener: T,
-) -> transport::TransportResult<transport::primitive::Transport<ProcessCommunication>>
+) -> transport::TransportResult<transport::Transport<ProcessCommunication>>
 where
     T: Listener<'a> + 'static,
 {
-    let create = |shutdown_rx| async move {
-        let (communication_tx, communication_rx) = mepa::channel(port).await?;
-        let poll_join = tokio::spawn(async move {
-            poll(listener, communication_rx, shutdown_rx).await;
-        });
-        let primitive = ProcessCommunication { communication_tx };
-        Ok((primitive, poll_join))
+    let (communication_tx, mut communication_rx) = mepa::channel(port).await?;
+    let receive = || async move {
+        let _ = communication_rx
+            .poll(|data| async {
+                let _ = listener.handle(data).await;
+            })
+            .await;
     };
-    Ok(transport::primitive::Transport::new(create).await?)
+    let primitive = ProcessCommunication { communication_tx };
+    Ok(transport::Transport::new(primitive, receive))
 }
 
-impl<'a> AsyncTrait<'a> for ProcessCommunication {
+/// Implements the [`AsyncTrait`] for the [`ProcessCommunication`].
+impl<'a> AsyncTrait<'a, transport::TransportResult<()>> for ProcessCommunication {
     type Future = Pin<Box<dyn Future<Output = transport::TransportResult<()>> + Send + 'a>>;
 }
 
@@ -99,6 +69,9 @@ impl<'a> Sender<'a> for ProcessCommunication {
     ///
     /// This can fail for any error that may happen while handling the socket, for example, writing
     /// the data or establishing the connection.
+    /// This method can also fail if the given destination could not be parsed to a [`SocketAddr`].
+    ///
+    /// [`SocketAddr`]: std::net::addr::SocketAddr
     fn send(
         &'a mut self,
         destination: &'a str,
@@ -116,26 +89,18 @@ impl<'a> Sender<'a> for ProcessCommunication {
 /// Transform into a [`TransportError`]
 impl From<mepa::Error> for TransportError {
     fn from(e: Error) -> Self {
-        TransportError::WriteError(format!("{:?}", e))
+        match e {
+            mepa::Error::SocketError(v) => TransportError::SendingError(v),
+            e => TransportError::SetupError(format!("{:?}", e)),
+        }
     }
 }
 
+/// Transform a [`AddrParserError`] into a [`TransportError`].
+///
+/// This error happen only when sending a message, so the [`TransportError::WriteError`] is used.
 impl From<AddrParseError> for TransportError {
     fn from(e: AddrParseError) -> Self {
-        TransportError::WriteError(e.to_string())
-    }
-}
-
-/// Transform into a [`TransportError`]
-impl From<mpsc::error::SendError<()>> for TransportError {
-    fn from(e: SendError<()>) -> Self {
-        TransportError::ShutdownError(e.to_string())
-    }
-}
-
-/// Transform into a [`TransportError`]
-impl From<JoinError> for TransportError {
-    fn from(e: JoinError) -> Self {
-        TransportError::ShutdownError(e.to_string())
+        TransportError::SendingError(e.to_string())
     }
 }
