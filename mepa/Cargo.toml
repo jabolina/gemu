@@ -2,7 +2,7 @@
 name = "mepa"
 version = "0.1.0"
 edition = "2021"
-authors = ["Jose <jabolina@protonmail.ch>"]
+authors = ["jab <jabolina@protonmail.ch>"]
 
 [dependencies]
 bytes = "1"

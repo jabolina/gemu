@@ -32,7 +32,7 @@ async fn send_and_receive_messages() {
     });
 
     for i in 0..1500 {
-        assert!(sender.send(destination, i).await.is_ok());
+        assert!(sender.send(destination, i.to_string()).await.is_ok());
     }
 
     for _ in 0..1500 {

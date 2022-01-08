@@ -178,7 +178,7 @@ impl Sender {
     pub async fn send(
         &mut self,
         destination: SocketAddr,
-        data: impl ToString,
+        data: impl Into<String>,
     ) -> crate::Result<()> {
         self.client.write_to(&destination.to_string(), data).await
     }
