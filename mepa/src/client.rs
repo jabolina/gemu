@@ -56,7 +56,7 @@ impl ClientManager {
     pub(crate) async fn write_to(
         &mut self,
         destination: &str,
-        data: impl ToString,
+        data: impl Into<String>,
     ) -> crate::Result<()> {
         let destination = destination.to_string();
         // First we acquire a client, this can used a client present in the pool or a new client
@@ -166,8 +166,8 @@ impl TcpClient {
     ///
     /// This method can fail if is not possible to write or flush the data to the underlying
     /// socket.
-    async fn write(&mut self, data: impl ToString) -> crate::Result<()> {
-        self.connection.write(data.to_string()).await
+    async fn write(&mut self, data: impl Into<String>) -> crate::Result<()> {
+        self.connection.write(data.into()).await
     }
 }
 
@@ -192,7 +192,7 @@ mod tests {
         let mut client = ClientManager::new();
 
         for i in 1..15 {
-            let result = client.write_to(&addr.to_string(), i).await;
+            let result = client.write_to(&addr.to_string(), i.to_string()).await;
             assert!(result.is_ok());
         }
     }

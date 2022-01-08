@@ -77,7 +77,7 @@ impl ProcessCommunication {
         <T as Listener>::Future: Send,
     {
         let (shutdown_tx, shutdown_rx) = mpsc::channel(1);
-        let (communication_rx, communication_tx) = mepa::create(port).await?;
+        let (communication_tx, communication_rx) = mepa::channel(port).await?;
         let poll_join = tokio::spawn(async move {
             poll(listener, communication_rx, shutdown_rx).await;
         });
@@ -100,7 +100,7 @@ impl ProcessCommunication {
     async fn send(
         &mut self,
         destination: SocketAddr,
-        data: impl ToString,
+        data: impl Into<String>,
     ) -> transport::TransportResult<()> {
         Ok(self.communication_tx.send(destination, data).await?)
     }
