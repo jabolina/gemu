@@ -11,10 +11,11 @@
 //! [`Listener`]: crate::transport::Listener
 
 use crate::transport;
-use crate::transport::{AsyncTrait, Listener, Sender, TransportError};
+use crate::transport::{AsyncTrait, Sender, TransportError};
 use std::future::Future;
 use std::net::AddrParseError;
 use std::pin::Pin;
+use tokio::sync::mpsc;
 
 use mepa::Error;
 
@@ -35,18 +36,15 @@ pub(crate) struct ProcessCommunication {
 ///
 /// This will return an error if is not possible to create the underlying TCP connection. Some
 /// of the possible errors is trying to use a door without permission, < 1023, for example.
-pub(crate) async fn new<'a, T>(
+pub(crate) async fn new(
     port: usize,
-    listener: T,
-) -> transport::TransportResult<transport::Transport<ProcessCommunication>>
-where
-    T: Listener<'a> + 'static,
-{
+    producer: mpsc::Sender<String>,
+) -> transport::TransportResult<transport::Transport<ProcessCommunication>> {
     let (communication_tx, mut communication_rx) = mepa::channel(port).await?;
     let receive = || async move {
         let _ = communication_rx
             .poll(|data| async {
-                let _ = listener.handle(data).await;
+                let _ = producer.send(data).await;
             })
             .await;
     };

@@ -14,7 +14,7 @@ use std::future::Future;
 
 use crate::transport::primitive::Transport;
 pub(crate) mod group_communication;
-mod primitive;
+pub(crate) mod primitive;
 pub(crate) mod process_communication;
 
 /// A basic trait to be used to define asynchronous methods.
@@ -28,20 +28,6 @@ pub(crate) mod process_communication;
 /// [`Future`]: std::future::Future
 pub(crate) trait AsyncTrait<'a, T>: Send + Sync {
     type Future: Future<Output = T> + Send + 'a;
-}
-
-/// The [`Listener`] trait, this will handle incoming messages.
-///
-/// The listener is an asynchronous trait, since the `handle` method is executed asynchronously.
-/// This will require an implementation for the concrete implementer, but the approach using
-/// pin + box + future will work just fine, but it will need some boilerplate.
-pub(crate) trait Listener<'a>: AsyncTrait<'a, ()> {
-    /// Handle incoming messages.
-    ///
-    /// Structures that implements the listener are responsible to handling all incoming messages.
-    /// The data is serialized as a [`String`], so is up to the implementer to deserialize into the
-    /// expected format.
-    fn handle(&self, data: String) -> Self::Future;
 }
 
 /// Defines the [`Sender`] trait.
