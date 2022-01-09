@@ -55,7 +55,12 @@ impl GenericMulticastSender {
 }
 
 impl GenericMulticastSender {
-    async fn gm_cast(&mut self, message: Message) -> Result<(), Error> {
+    async fn gm_cast(
+        &mut self,
+        destination: Vec<&str>,
+        content: impl Into<String>,
+    ) -> Result<(), Error> {
+        let message = Message::build(&content.into(), destination);
         Ok(self.publish.send(message).await?)
     }
 
@@ -69,7 +74,7 @@ impl GenericMulticastSender {
 
 impl GenericMulticastReceiver {
     async fn receive_message(&mut self, data: String) {
-        let message = Message::parse(data);
+        let message = Message::from(data);
         let next = match message.r#type() {
             MessageType::Broadcast => self.compute_group_timestamp().await,
             MessageType::Process => self.gather_group_timestamps().await,

@@ -5,9 +5,11 @@ edition = "2021"
 authors = ["jab <jabolina@protonmail.ch>"]
 
 [dependencies]
-tokio = { version = "1.15.0", features = ["full"] }
-mepa = { path = "../mepa" }
 abro = { path = "../abro" }
+base64 = "0.13.0"
+mepa = { path = "../mepa" }
+tokio = { version = "1.15.0", features = ["full"] }
+uuid = { version = "0.8.2", features = ["v4"] }
 
 [dev-dependencies]
 tokio = { version = "1.15.0", features = ["test-util"] }

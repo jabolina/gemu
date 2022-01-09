@@ -38,21 +38,18 @@ pub(crate) async fn send_messages(
 ) {
     let send_message = async move {
         while let Some(message) = handler.message_rx.recv().await {
+            let destinations = message.destination().clone();
             match message.r#type() {
                 MessageType::Process => {
-                    for destination in message.destination() {
-                        handler
-                            .process_transport
-                            .send(destination, message.content())
-                            .await;
+                    let content: String = Message::into(message);
+                    for destination in destinations {
+                        handler.process_transport.send(&destination, &content).await;
                     }
                 }
                 MessageType::Broadcast => {
-                    for destination in message.destination() {
-                        handler
-                            .group_transport
-                            .send(destination, message.content())
-                            .await;
+                    let content: String = Message::into(message);
+                    for destination in destinations {
+                        handler.group_transport.send(&destination, &content).await;
                     }
                 }
             };
