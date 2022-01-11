@@ -148,43 +148,15 @@ mod tests {
     /// [`Listener`] implementation and then calling the stop method.
     ///
     /// To verify if the messages was actually closed, a 5 seconds timeout is defined.
-    use crate::transport::{
-        group_communication, process_communication, AsyncTrait, Listener, Sender,
-    };
+    use crate::transport::{group_communication, process_communication, Sender};
     use abro::TransportConfiguration;
-    use std::future::Future;
-    use std::pin::Pin;
     use tokio::sync::mpsc;
-
-    struct DumbListener {
-        tx: mpsc::Sender<String>,
-    }
-
-    impl<'a> AsyncTrait<'a, ()> for DumbListener {
-        type Future = Pin<Box<dyn Future<Output = ()> + Send + 'a>>;
-    }
-
-    /// Implements the [`Listener`] trait for the [`DumbListener`].
-    ///
-    /// This will only receive the message, assert that it is `"hello"` and publish to the channel.
-    impl<'a> Listener<'a> for DumbListener {
-        fn handle(&self, data: String) -> Self::Future {
-            let sender = self.tx.clone();
-            println!("Received: {}", data);
-            Box::pin(async move {
-                assert_eq!(data, String::from("hello"));
-                let sent = sender.send(data).await;
-                assert!(sent.is_ok());
-            })
-        }
-    }
 
     /// Verify the simple process communication primitive.
     #[tokio::test]
     async fn process_create_send_receive_stop() {
         let (tx, rx) = mpsc::channel(1);
-        let listener = DumbListener { tx: tx.clone() };
-        let transport = process_communication::new(12345, listener).await;
+        let transport = process_communication::new(12345, tx).await;
         assert!(transport.is_ok());
 
         let mut transport = transport.unwrap();
@@ -202,10 +174,8 @@ mod tests {
     #[tokio::test]
     async fn process_should_return_error_binding() {
         let (tx, _) = mpsc::channel(1);
-        let st_listener = DumbListener { tx: tx.clone() };
-        let nd_listener = DumbListener { tx: tx.clone() };
-        let st_transport = process_communication::new(12346, st_listener).await;
-        let nd_transport = process_communication::new(12346, nd_listener).await;
+        let st_transport = process_communication::new(12346, tx.clone()).await;
+        let nd_transport = process_communication::new(12346, tx).await;
 
         assert!(st_transport.is_ok());
         assert!(nd_transport.is_err());
@@ -219,7 +189,6 @@ mod tests {
     #[tokio::test]
     async fn group_create_send_receive_stop() {
         let (tx, rx) = mpsc::channel(1);
-        let listener = DumbListener { tx: tx.clone() };
         let partition = format!("gemu-partition-{}", some_id());
         let configuration = TransportConfiguration::builder()
             .with_host("localhost")
@@ -228,7 +197,7 @@ mod tests {
             .build();
         assert!(configuration.is_ok());
 
-        let transport = group_communication::new(configuration.unwrap(), listener).await;
+        let transport = group_communication::new(configuration.unwrap(), tx).await;
         assert!(transport.is_ok());
 
         let mut transport = transport.unwrap();
@@ -245,7 +214,6 @@ mod tests {
     #[tokio::test]
     async fn group_fail_etcd_not_available() {
         let (tx, _) = mpsc::channel(1);
-        let listener = DumbListener { tx: tx.clone() };
         let configuration = TransportConfiguration::builder()
             .with_host("localhost")
             .with_port(1666)
@@ -253,7 +221,7 @@ mod tests {
             .build();
         assert!(configuration.is_ok());
 
-        let transport = group_communication::new(configuration.unwrap(), listener).await;
+        let transport = group_communication::new(configuration.unwrap(), tx).await;
         assert!(transport.is_err());
     }
 

@@ -1,3 +1,4 @@
+pub mod algorithm;
 mod transport;
 
 enum Error {

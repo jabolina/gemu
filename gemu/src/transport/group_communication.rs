@@ -1,8 +1,9 @@
 use crate::transport;
-use crate::transport::{AsyncTrait, Listener, Sender, TransportError};
+use crate::transport::{AsyncTrait, Sender, TransportError};
 use abro::Error;
 use std::future::Future;
 use std::pin::Pin;
+use tokio::sync::mpsc;
 
 /// Implements the group communication primitive. The underlying group communication is atomic
 /// broadcast.
@@ -22,19 +23,16 @@ pub(crate) struct GroupCommunication {
 /// probably means that is not possible to connect to the etcd server.
 ///
 /// [`Transport`]: transport::Transport
-pub(crate) async fn new<'a, T>(
+pub(crate) async fn new(
     configuration: abro::TransportConfiguration,
-    listener: T,
-) -> transport::TransportResult<transport::Transport<GroupCommunication>>
-where
-    T: Listener<'a> + 'static,
-{
+    producer: mpsc::Sender<String>,
+) -> transport::TransportResult<transport::Transport<GroupCommunication>> {
     let (communication_tx, communication_rx) = abro::channel(configuration).await?;
     let receive = || async move {
         let _ = communication_rx
             .listen(|data| async {
                 if let Ok(data) = data {
-                    let _ = listener.handle(data).await;
+                    let _ = producer.send(data).await;
                 }
                 Ok(true)
             })
