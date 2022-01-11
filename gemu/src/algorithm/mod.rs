@@ -2,4 +2,9 @@ mod handler;
 mod message;
 mod writer;
 
-enum AlgorithmError {}
+pub use writer::GenericMulticast;
+
+#[derive(Debug)]
+pub enum AlgorithmError {}
+
+pub(crate) type AlgorithmResult<T> = std::result::Result<T, AlgorithmError>;
