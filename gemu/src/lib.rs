@@ -1,4 +1,5 @@
 pub mod algorithm;
+mod internal;
 mod transport;
 
 enum Error {
