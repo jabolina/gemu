@@ -87,7 +87,7 @@ pub(crate) enum MessageType {
 /// Identify the message current status.
 ///
 /// This follows the same name from the protocol specification and also means the same thing.
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub(crate) enum MessageStatus {
     /// Message without any timestamp associated yet.
     S0,
@@ -110,7 +110,7 @@ pub(crate) enum MessageStatus {
 pub(crate) struct Message {
     id: uuid::Uuid,
     content: String,
-    timestamp: u128,
+    timestamp: u64,
     status: MessageStatus,
     destination: Vec<String>,
     r#type: MessageType,
@@ -154,12 +154,22 @@ impl Message {
         &self.content
     }
 
+    #[inline]
+    pub(crate) fn status(&self) -> &MessageStatus {
+        &self.status
+    }
+
+    #[inline]
+    pub(crate) fn timestamp(&self) -> u64 {
+        self.timestamp
+    }
+
     /// Update the message timestamp with the given value.
     ///
     /// We will only change the timestamp if the message current status is either `S0` or `S1`.
     /// Since any other status means that the final timestamp is already selected. This should be
     /// used before updating the message status.
-    pub(crate) fn update_timestamp(mut self, timestamp: u128) -> Self {
+    pub(crate) fn update_timestamp(mut self, timestamp: u64) -> Self {
         match self.status {
             MessageStatus::S0 | MessageStatus::S1 => self.timestamp = timestamp,
             _ => {}

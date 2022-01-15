@@ -1,6 +1,7 @@
 pub use writer::GenericMulticast;
 
 pub(crate) use message::Message;
+pub(crate) use message::MessageStatus;
 
 mod handler;
 mod message;
