@@ -2,7 +2,13 @@ pub mod algorithm;
 mod internal;
 mod transport;
 
-enum Error {
+pub use algorithm::ConflictRelationship;
+pub use algorithm::GenericMulticast;
+pub use algorithm::GenericMulticastConfiguration;
+pub use algorithm::Oracle;
+
+#[derive(Debug)]
+pub enum Error {
     TransportError(String),
 }
 

@@ -1,7 +1,7 @@
 use crate::algorithm;
 use crate::algorithm::handler::GenericMulticastReceiver;
 use crate::algorithm::message::{Message, MessageType};
-use crate::algorithm::AlgorithmError;
+use crate::algorithm::{AlgorithmError, GenericMulticastConfiguration, Oracle};
 use crate::transport::group_communication::GroupCommunication;
 use crate::transport::primitive::Transport;
 use crate::transport::process_communication;
@@ -40,6 +40,9 @@ pub struct GenericMulticast {
 ///
 /// [`Receiver`]: mpsc::Receiver
 struct TransportManager {
+    // The oracle struct can convert a partition name to the socket address of the participants.
+    oracle: Box<dyn Oracle>,
+
     // Messages that should be sent using one of the underlying primitives.
     message_rx: mpsc::Receiver<Message>,
 
@@ -65,39 +68,76 @@ impl GenericMulticast {
     /// This structure will be created following the configuration given as arguments.
     ///
     /// ```no_run
+    /// use gemu::GenericMulticastConfiguration;
+    /// # use gemu::Oracle;
+    /// # use gemu::ConflictRelationship;
+    ///
+    /// # struct SomeOracleImplementation;
+    /// # impl Oracle for SomeOracleImplementation {
+    /// #    fn identify(&self, partition: String) -> Vec<String> {
+    /// #        todo!()
+    /// #    }
+    /// # }
+    /// #
+    /// # struct SomeConflictRelationship;
+    /// # impl ConflictRelationship<String> for SomeConflictRelationship {
+    /// #     fn conflict(&self, lhs: &String, rhs: &String) -> bool {
+    /// #        todo!()
+    /// #     }
+    /// # }  
     ///
     /// #[tokio::main]
     /// async fn main() {
-    ///     let configuration = abro::TransportConfiguration::builder()
-    ///         .with_host("localhost")
-    ///         .with_port(2379)
-    ///         .with_partition("partition-name")
+    ///     let configuration = GenericMulticastConfiguration::builder()
+    ///         .with_partition("my-partition")
+    ///         .with_port(12233)
+    ///         .with_group_host("localhost")
+    ///         .with_group_port(2379)
+    ///         .with_conflict(SomeConflictRelationship)
+    ///         .with_oracle(SomeOracleImplementation)
     ///         .build()
     ///         .expect("Should be configured");
     ///
-    ///     let mut algorithm = gemu::algorithm::GenericMulticast::build(configuration).await
+    ///     let mut algorithm = gemu::GenericMulticast::build(configuration).await
     ///         .expect("Should create algorithm correctly");
     ///
     ///     algorithm.gm_cast("message content", vec!["partition-name"]).await;
     /// }
     /// ```
     ///
+    /// Some of the arguments are optional. The `port` and `group port` and `group host` can be
+    /// created with default values if not provided. The default `port` which will bind is `12233`,
+    /// the default group port will be 2379, which is etcd default port and the default group host
+    /// is `localhost`.
+    ///
     /// # Errors
     ///
     /// This method can fail if is not possible to correctly create the underlying primitives.
-    pub async fn build(configuration: TransportConfiguration) -> algorithm::AlgorithmResult<Self> {
+    pub async fn build<V>(
+        configuration: GenericMulticastConfiguration<V>,
+    ) -> algorithm::AlgorithmResult<Self>
+    where
+        V: From<String>,
+    {
         let (message_tx, message_rx) = mpsc::channel(1024);
         let (publish_tx, publish_rx) = mpsc::channel(1024);
         let (shutdown_tx, _) = broadcast::channel(1);
 
         // First create the receiver, which is the algorithm implementation itself. The receiver
         // receive both channels to send and receive messages from the underlying primitives.
-        let mut receiver = GenericMulticastReceiver::new(message_rx, publish_tx.clone());
+        let mut receiver =
+            GenericMulticastReceiver::new(configuration.conflict, message_rx, publish_tx.clone());
 
         // Create the manager structure. This structure will instantiate the primitives and will
         // only receive messages. Using the channels to receive any message that should be sent.
-        let mut writer =
-            TransportManager::new(8080, configuration, publish_rx, message_tx.clone()).await?;
+        let mut writer = TransportManager::new(
+            configuration.local_port,
+            configuration.group_configuration,
+            configuration.oracle,
+            publish_rx,
+            message_tx.clone(),
+        )
+        .await?;
 
         // Now each of the structure must handle itself. The receiver is spawned to receive message
         // and execute the algorithm itself. The sender is spawned so it can only send messages.
@@ -167,6 +207,7 @@ impl TransportManager {
     async fn new(
         port: usize,
         configuration: TransportConfiguration,
+        oracle: Box<dyn Oracle>,
         consumer: mpsc::Receiver<Message>,
         producer: mpsc::Sender<String>,
     ) -> algorithm::AlgorithmResult<Self> {
@@ -175,6 +216,7 @@ impl TransportManager {
 
         Ok(TransportManager {
             message_rx: consumer,
+            oracle,
             group_transport,
             process_transport,
         })
@@ -202,8 +244,10 @@ impl TransportManager {
                     // processes within a given partition.
                     MessageType::Process => {
                         let content: String = Message::into(message);
-                        for destination in destinations {
-                            self.process_transport.send(&destination, &content).await;
+                        for partition in destinations {
+                            for destination in self.oracle.identify(partition) {
+                                self.process_transport.send(&destination, &content).await;
+                            }
                         }
                     }
 
@@ -259,8 +303,16 @@ impl From<JoinError> for AlgorithmError {
 mod tests {
     use crate::algorithm::message::Message;
     use crate::algorithm::writer::{GenericMulticast, TransportManager};
+    use crate::algorithm::Oracle;
     use abro::TransportConfiguration;
     use tokio::sync::{broadcast, mpsc};
+
+    struct MockOracle(usize);
+    impl Oracle for MockOracle {
+        fn identify(&self, partition: String) -> Vec<String> {
+            vec![format!("localhost:{}", self.0)]
+        }
+    }
 
     #[ignore]
     #[tokio::test]
@@ -275,8 +327,15 @@ mod tests {
         let (shutdown_tx, _) = broadcast::channel(1);
         let (message_tx, mut message_rx) = mpsc::channel(1024);
         let (publish_tx, publish_rx) = mpsc::channel(1024);
-        let manager =
-            TransportManager::new(0, configuration.unwrap(), publish_rx, message_tx.clone()).await;
+        let oracle = MockOracle(12233);
+        let manager = TransportManager::new(
+            oracle.0,
+            configuration.unwrap(),
+            Box::new(oracle),
+            publish_rx,
+            message_tx.clone(),
+        )
+        .await;
 
         assert!(manager.is_ok());
         let shutdown = shutdown_tx.subscribe();

@@ -1,6 +1,6 @@
 use crate::algorithm::handler::NextStep::NoOp;
 use crate::algorithm::message::{Message, MessageType};
-use crate::algorithm::AlgorithmResult;
+use crate::algorithm::{AlgorithmResult, ConflictRelationship};
 use tokio::sync::{broadcast, mpsc};
 
 /// The Generic Multicast implementation itself.
@@ -38,7 +38,11 @@ impl GenericMulticastReceiver {
     ///
     /// The structure will receive incoming messages from the `consumer` channel and when needed,
     /// messages will be sent through the `publisher` channel.
-    pub(crate) fn new(consumer: mpsc::Receiver<String>, publisher: mpsc::Sender<Message>) -> Self {
+    pub(crate) fn new<V>(
+        conflict_relationship: Box<dyn ConflictRelationship<V>>,
+        consumer: mpsc::Receiver<String>,
+        publisher: mpsc::Sender<Message>,
+    ) -> Self {
         GenericMulticastReceiver {
             consumer,
             publisher,
