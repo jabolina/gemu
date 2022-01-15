@@ -70,6 +70,7 @@
 use crate::algorithm::message::MessageStatus::S0;
 use crate::algorithm::message::MessageType::Broadcast;
 use std::cmp::Ordering;
+use std::hash::{Hash, Hasher};
 use std::str::FromStr;
 
 /// An internal enumeration to identify the type of the received message. This is used so we can
@@ -146,6 +147,11 @@ impl Message {
     #[inline]
     pub(crate) fn destination(&self) -> &Vec<String> {
         &self.destination
+    }
+
+    #[inline]
+    pub(crate) fn content(&self) -> &String {
+        &self.content
     }
 
     /// Update the message timestamp with the given value.
@@ -288,6 +294,7 @@ impl From<String> for Message {
     }
 }
 
+impl Eq for Message {}
 impl PartialEq for Message {
     /// Verify if both messages are equals.
     ///
@@ -336,6 +343,17 @@ impl PartialOrd for Message {
     /// Messages can only be small or greater, should not be possible to use `>=`.
     fn ge(&self, _: &Self) -> bool {
         panic!("Operator not allowed")
+    }
+}
+
+/// Implements [`Hash`] for message.
+///
+/// This is required so we can store the [`Message`] structure using a [`HashSet`]. We only use
+/// the unique identifier for hashing.
+impl Hash for Message {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        state.write(self.id.as_bytes());
+        state.finish();
     }
 }
 
